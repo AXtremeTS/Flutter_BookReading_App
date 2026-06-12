@@ -237,9 +237,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onTap: () {
                 showAboutDialog(
                   context: context,
-                  applicationName: 'Book Haven',
+                  applicationName: 'A Book',
                   applicationVersion: '1.0.0',
-                  applicationLegalese: '© 2024 Book Haven\nAll rights reserved',
+                  applicationLegalese: '© 2026 A Book\nAll rights reserved',
                   children: [
                     const SizedBox(height: 16),
                     Text(
