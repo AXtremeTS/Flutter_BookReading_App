@@ -37,6 +37,11 @@ class AuthService {
       final user = _users.firstWhere(
         (u) => u.username == username && u.password == password,
       );
+      
+      if (user.isDeactivated) {
+        return false;
+      }
+     
       _currentUser = user;
       
       // Save login state
@@ -46,6 +51,27 @@ class AuthService {
       return true;
     } catch (e) {
       return false;
+    }
+  }
+
+    List<User> getAllUsers() {
+    return _users;
+  }
+
+  void resetPassword(String username, String newPassword) {
+    final index = _users.indexWhere((u) => u.username == username);
+    if (index != -1) {
+      _users[index].password = newPassword;
+    }
+  }
+
+  void toggleUserStatus(String username) {
+    final index = _users.indexWhere((u) => u.username == username);
+    if (index != -1) {
+      // Don't let admin deactivate themselves
+      if (_users[index].username != 'admin') {
+        _users[index].isDeactivated = !_users[index].isDeactivated;
+      }
     }
   }
 
