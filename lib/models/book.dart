@@ -7,6 +7,8 @@ class Book {
   final double rating;
   final List<String> tags;
   final List<Chapter> chapters;
+  bool isHidden;
+  final bool isFromFile;
 
   Book({
     required this.id,
@@ -17,6 +19,8 @@ class Book {
     required this.rating,
     required this.tags,
     required this.chapters,
+    this.isHidden = false,
+    this.isFromFile = false,
   });
 }
 
