@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'dart:io';
 import '../models/book.dart';
 import '../utils/app_colors.dart';
 import '../services/book_service.dart';
@@ -86,18 +87,29 @@ class _BookCardState extends State<BookCard> with SingleTickerProviderStateMixin
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
                   child: AspectRatio(
                     aspectRatio: 0.7,
-                    child: Image.asset(
-                      widget.book.coverImage,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: AppColors.blockLilac,
-                          child: const Center(
-                            child: Icon(Icons.book, size: 48, color: AppColors.ink),
+                    child: widget.book.isFromFile 
+                      ? Image.file(
+                          File(widget.book.coverImage),
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Container(
+                            color: AppColors.blockLilac,
+                            child: const Center(
+                              child: Icon(Icons.broken_image, size: 48, color: AppColors.ink),
+                            ),
                           ),
-                        );
-                      },
-                    ),
+                        )
+                      : Image.asset(
+                          widget.book.coverImage,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: AppColors.blockLilac,
+                              child: const Center(
+                                child: Icon(Icons.book, size: 48, color: AppColors.ink),
+                              ),
+                            );
+                          },
+                        ),
                   ),
                 ),
                 // Favorite Button with Animation
