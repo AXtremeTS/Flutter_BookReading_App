@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'screens/splash_screen.dart';
+import 'screens/login_screen.dart';
 import 'utils/app_theme.dart';
 import 'services/settings_service.dart';
 
@@ -44,6 +45,9 @@ class _BookReadingAppState extends State<BookReadingApp> {
       darkTheme: AppTheme.darkTheme,
       themeMode: _settingsService.themeMode,
       home: const SplashScreen(),
+      routes: {
+        '/login': (context) => const LoginScreen(),
+      },      
     );
   }
 }
