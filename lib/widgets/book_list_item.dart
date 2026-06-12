@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'dart:io';
 import '../models/book.dart';
 import '../utils/app_colors.dart';
 import '../services/book_service.dart';
@@ -46,18 +47,31 @@ class _BookListItemState extends State<BookListItem> {
               child: SizedBox(
                 width: 100,
                 height: 140,
-                child: Image.asset(
-                  widget.book.coverImage,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      color: isDark ? const Color(0xFF3C3C3C) : AppColors.blockLilac,
-                      child: const Center(
-                        child: Icon(Icons.book, size: 40),
-                      ),
-                    );
-                  },
-                ),
+                child: widget.book.isFromFile 
+                  ? Image.file(
+                      File(widget.book.coverImage),
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: isDark ? const Color(0xFF3C3C3C) : AppColors.blockLilac,
+                          child: const Center(
+                            child: Icon(Icons.broken_image, size: 40),
+                          ),
+                        );
+                      },
+                    )
+                  : Image.asset(
+                      widget.book.coverImage,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          color: isDark ? const Color(0xFF3C3C3C) : AppColors.blockLilac,
+                          child: const Center(
+                            child: Icon(Icons.book, size: 40),
+                          ),
+                        );
+                      },
+                    ),
               ),
             ),
             // Book Info
