@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../utils/app_colors.dart';
 import '../services/auth_service.dart';
+import '../services/book_service.dart';
 import 'register_screen.dart';
 import 'home_screen.dart';
 import 'admin/admin_dashboard_screen.dart';
@@ -44,6 +45,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (mounted) {
       if (success) {
+        await BookService().loadSavedData();
         final user = AuthService().currentUser;
         if (user != null && user.isAdmin) {
           Navigator.of(context).pushReplacement(
