@@ -1,10 +1,13 @@
 import '../models/book.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'auth_service.dart';
 
 class BookService {
   static final BookService _instance = BookService._internal();
   factory BookService() => _instance;
   BookService._internal();
+
+  final AuthService _authService = AuthService();
 
   final List<Book> _books = [
     Book(
@@ -353,7 +356,13 @@ But first, you had to survive this day.''',
   final Set<String> _favoriteBookIds = {};
   final Set<String> _readBookIds = {};
 
-  List<Book> get allBooks => List.unmodifiable(_books);
+  List<Book> get allBooks {
+    final user = _authService.currentUser;
+    if (user != null && user.isAdmin) {
+      return List.unmodifiable(_books);
+    }
+    return List.unmodifiable(_books.where((b) => !b.isHidden));
+  }
   
   void addBook(Book book) {
     _books.add(book);
@@ -370,6 +379,13 @@ But first, you had to survive this day.''',
     _books.removeWhere((b) => b.id == id);
     _favoriteBookIds.remove(id);
     _readBookIds.remove(id);
+  }
+  
+  void toggleBookVisibility(String bookId) {
+    final index = _books.indexWhere((b) => b.id == bookId);
+    if (index != -1) {
+      _books[index].isHidden = !_books[index].isHidden;
+    }
   }
   
   List<Book> get favoriteBooks => 
@@ -395,30 +411,45 @@ But first, you had to survive this day.''',
     _saveReadBooks();
   }
 
+  String get _favoritesKey {
+    final username = _authService.currentUser?.username ?? 'default';
+    return 'favorites_$username';
+  }
+
+  String get _readBooksKey {
+    final username = _authService.currentUser?.username ?? 'default';
+    return 'read_books_$username';
+  }
+
   Future<void> _saveFavorites() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('favorites', _favoriteBookIds.toList());
+    await prefs.setStringList(_favoritesKey, _favoriteBookIds.toList());
   }
 
   Future<void> _saveReadBooks() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList('read_books', _readBookIds.toList());
+    await prefs.setStringList(_readBooksKey, _readBookIds.toList());
   }
 
   Future<void> loadSavedData() async {
     final prefs = await SharedPreferences.getInstance();
-    final favorites = prefs.getStringList('favorites') ?? [];
-    final readBooks = prefs.getStringList('read_books') ?? [];
+    
+    _favoriteBookIds.clear();
+    _readBookIds.clear();
+
+    final favorites = prefs.getStringList(_favoritesKey) ?? [];
+    final readBooks = prefs.getStringList(_readBooksKey) ?? [];
     
     _favoriteBookIds.addAll(favorites);
     _readBookIds.addAll(readBooks);
   }
 
   List<Book> searchBooks(String query) {
-    if (query.isEmpty) return allBooks;
+    final books = allBooks;
+    if (query.isEmpty) return books;
     
     query = query.toLowerCase();
-    return _books.where((book) {
+    return books.where((book) {
       return book.title.toLowerCase().contains(query) ||
           book.author.toLowerCase().contains(query) ||
           book.tags.any((tag) => tag.toLowerCase().contains(query));
@@ -426,9 +457,10 @@ But first, you had to survive this day.''',
   }
 
   List<Book> filterByTags(List<String> tags) {
-    if (tags.isEmpty) return allBooks;
+    final books = allBooks;
+    if (tags.isEmpty) return books;
     
-    return _books.where((book) {
+    return books.where((book) {
       return book.tags.any((tag) => tags.contains(tag));
     }).toList();
   }
