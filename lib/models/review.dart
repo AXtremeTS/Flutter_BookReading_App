@@ -7,6 +7,7 @@ class Review {
   final String comment;
   final DateTime createdAt;
   final int likes;
+  bool isHidden;
 
   Review({
     required this.id,
@@ -17,5 +18,6 @@ class Review {
     required this.comment,
     required this.createdAt,
     this.likes = 0,
+    this.isHidden = false,
   });
 }
