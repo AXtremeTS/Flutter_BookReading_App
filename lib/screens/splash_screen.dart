@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'login_screen.dart';
 import 'home_screen.dart';
+import 'admin/admin_dashboard_screen.dart';
 import '../utils/app_colors.dart';
 import '../services/auth_service.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -48,11 +49,18 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     final isLoggedIn = await AuthService().checkLoginStatus();
     
     if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => isLoggedIn ? const HomeScreen() : const LoginScreen(),
-        ),
-      );
+      final user = AuthService().currentUser;
+      if (isLoggedIn && user != null && user.isAdmin) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const AdminDashboardScreen()),
+        );
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => isLoggedIn ? const HomeScreen() : const LoginScreen(),
+          ),
+        );
+      }
     }
   }
 
