@@ -4,6 +4,7 @@ import 'home_screen.dart';
 import 'admin/admin_dashboard_screen.dart';
 import '../utils/app_colors.dart';
 import '../services/auth_service.dart';
+import '../services/book_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -47,6 +48,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     await Future.delayed(const Duration(seconds: 2));
     
     final isLoggedIn = await AuthService().checkLoginStatus();
+    if (isLoggedIn) {
+      await BookService().loadSavedData();
+    }
     
     if (mounted) {
       final user = AuthService().currentUser;
