@@ -355,6 +355,23 @@ But first, you had to survive this day.''',
 
   List<Book> get allBooks => List.unmodifiable(_books);
   
+  void addBook(Book book) {
+    _books.add(book);
+  }
+
+  void updateBook(Book book) {
+    final index = _books.indexWhere((b) => b.id == book.id);
+    if (index != -1) {
+      _books[index] = book;
+    }
+  }
+
+  void deleteBook(String id) {
+    _books.removeWhere((b) => b.id == id);
+    _favoriteBookIds.remove(id);
+    _readBookIds.remove(id);
+  }
+  
   List<Book> get favoriteBooks => 
       _books.where((book) => _favoriteBookIds.contains(book.id)).toList();
   
