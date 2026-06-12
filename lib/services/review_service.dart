@@ -65,8 +65,22 @@ class ReviewService {
 
   final Set<String> _likedReviews = {};
 
-  List<Review> getBookReviews(String bookId) {
-    return _bookReviews[bookId] ?? [];
+  List<Review> getBookReviews(String bookId, {bool isAdmin = false}) {
+    final reviews = _bookReviews[bookId] ?? [];
+    if (isAdmin) {
+      return reviews;
+    }
+    return reviews.where((r) => !r.isHidden).toList();
+  }
+
+  void toggleReviewVisibility(String bookId, String reviewId) {
+    final reviews = _bookReviews[bookId];
+    if (reviews != null) {
+      final index = reviews.indexWhere((r) => r.id == reviewId);
+      if (index != -1) {
+        reviews[index].isHidden = !reviews[index].isHidden;
+      }
+    }
   }
 
   bool isReviewLiked(String reviewId) {
