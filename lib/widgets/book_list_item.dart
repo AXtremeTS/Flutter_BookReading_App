@@ -24,7 +24,7 @@ class _BookListItemState extends State<BookListItem> {
 
   @override
   Widget build(BuildContext context) {
-    final isFavorite = _bookService.isFavorite(widget.book.id);
+    final bool isFavorite = _bookService.isFavorite(widget.book.id) == true;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return GestureDetector(
@@ -46,32 +46,79 @@ class _BookListItemState extends State<BookListItem> {
               borderRadius: const BorderRadius.horizontal(left: Radius.circular(8)),
               child: SizedBox(
                 width: 100,
-                height: 140,
-                child: widget.book.isFromFile 
-                  ? Image.file(
-                      File(widget.book.coverImage),
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: isDark ? const Color(0xFF3C3C3C) : AppColors.blockLilac,
-                          child: const Center(
-                            child: Icon(Icons.broken_image, size: 40),
-                          ),
+                height: 160,
+                child: () {
+                        final cover = widget.book.coverImage;
+
+                        // 1. Trường hợp đường dẫn rỗng hoặc null -> Hiện ảnh mặc định
+                        if (cover == null || cover.isEmpty) {
+                          return Container(
+                            color: AppColors.blockLilac,
+                            child: const Center(
+                              child: Icon(
+                                Icons.book,
+                                size: 48,
+                                color: AppColors.ink,
+                              ),
+                            ),
+                          );
+                        }
+
+                        // 2. Trường hợp là ảnh local Asset (như 'assets/img/example.jpg')
+                        if (cover.startsWith('assets/')) {
+                          return Image.asset(
+                            cover,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                Container(
+                                  color: AppColors.blockLilac,
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.broken_image,
+                                      size: 48,
+                                      color: AppColors.ink,
+                                    ),
+                                  ),
+                                ),
+                          );
+                        }
+
+                        // 3. Trường hợp là liên kết từ mạng / Supabase (bắt đầu bằng http hoặc https)
+                        if (cover.startsWith('http')) {
+                          return Image.network(
+                            cover,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                Container(
+                                  color: AppColors.blockLilac,
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.broken_image,
+                                      size: 48,
+                                      color: AppColors.ink,
+                                    ),
+                                  ),
+                                ),
+                          );
+                        }
+
+                        // 4. Các trường hợp còn lại (đường dẫn File vật lý do admin chọn từ thiết bị)
+                        return Image.file(
+                          File(cover),
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) =>
+                              Container(
+                                color: AppColors.blockLilac,
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.broken_image,
+                                    size: 48,
+                                    color: AppColors.ink,
+                                  ),
+                                ),
+                              ),
                         );
-                      },
-                    )
-                  : Image.asset(
-                      widget.book.coverImage,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          color: isDark ? const Color(0xFF3C3C3C) : AppColors.blockLilac,
-                          child: const Center(
-                            child: Icon(Icons.book, size: 40),
-                          ),
-                        );
-                      },
-                    ),
+                      }(),
               ),
             ),
             // Book Info

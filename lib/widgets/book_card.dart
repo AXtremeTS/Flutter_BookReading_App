@@ -9,17 +9,14 @@ class BookCard extends StatefulWidget {
   final Book book;
   final VoidCallback onTap;
 
-  const BookCard({
-    super.key,
-    required this.book,
-    required this.onTap,
-  });
+  const BookCard({super.key, required this.book, required this.onTap});
 
   @override
   State<BookCard> createState() => _BookCardState();
 }
 
-class _BookCardState extends State<BookCard> with SingleTickerProviderStateMixin {
+class _BookCardState extends State<BookCard>
+    with SingleTickerProviderStateMixin {
   final BookService _bookService = BookService();
   late AnimationController _scaleController;
   late Animation<double> _scaleAnimation;
@@ -45,7 +42,7 @@ class _BookCardState extends State<BookCard> with SingleTickerProviderStateMixin
 
   @override
   Widget build(BuildContext context) {
-    final isFavorite = _bookService.isFavorite(widget.book.id);
+    final bool isFavorite = _bookService.isFavorite(widget.book.id) == true;
 
     return GestureDetector(
       onTapDown: (_) {
@@ -68,7 +65,9 @@ class _BookCardState extends State<BookCard> with SingleTickerProviderStateMixin
           decoration: BoxDecoration(
             color: AppColors.surfaceSoft,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: _isPressed ? AppColors.primary : AppColors.hairline),
+            border: Border.all(
+              color: _isPressed ? AppColors.primary : AppColors.hairline,
+            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: _isPressed ? 0.15 : 0.08),
@@ -78,144 +77,199 @@ class _BookCardState extends State<BookCard> with SingleTickerProviderStateMixin
             ],
           ),
           child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Book Cover Image
-            Stack(
-              children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-                  child: AspectRatio(
-                    aspectRatio: 0.7,
-                    child: widget.book.isFromFile 
-                      ? Image.file(
-                          File(widget.book.coverImage),
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Container(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Book Cover Image
+              Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(12),
+                    ),
+                    child: AspectRatio(
+                      aspectRatio: 1.0,
+                      child: () {
+                        final cover = widget.book.coverImage;
+
+                        // 1. Trường hợp đường dẫn rỗng hoặc null -> Hiện ảnh mặc định
+                        if (cover == null || cover.isEmpty) {
+                          return Container(
                             color: AppColors.blockLilac,
                             child: const Center(
-                              child: Icon(Icons.broken_image, size: 48, color: AppColors.ink),
+                              child: Icon(
+                                Icons.book,
+                                size: 48,
+                                color: AppColors.ink,
+                              ),
                             ),
-                          ),
-                        )
-                      : Image.asset(
-                          widget.book.coverImage,
+                          );
+                        }
+
+                        // 2. Trường hợp là ảnh local Asset (như 'assets/img/example.jpg')
+                        if (cover.startsWith('assets/')) {
+                          return Image.asset(
+                            cover,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                Container(
+                                  color: AppColors.blockLilac,
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.broken_image,
+                                      size: 48,
+                                      color: AppColors.ink,
+                                    ),
+                                  ),
+                                ),
+                          );
+                        }
+
+                        // 3. Trường hợp là liên kết từ mạng / Supabase (bắt đầu bằng http hoặc https)
+                        if (cover.startsWith('http')) {
+                          return Image.network(
+                            cover,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                Container(
+                                  color: AppColors.blockLilac,
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.broken_image,
+                                      size: 48,
+                                      color: AppColors.ink,
+                                    ),
+                                  ),
+                                ),
+                          );
+                        }
+
+                        // 4. Các trường hợp còn lại (đường dẫn File vật lý do admin chọn từ thiết bị)
+                        return Image.file(
+                          File(cover),
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              color: AppColors.blockLilac,
-                              child: const Center(
-                                child: Icon(Icons.book, size: 48, color: AppColors.ink),
+                          errorBuilder: (context, error, stackTrace) =>
+                              Container(
+                                color: AppColors.blockLilac,
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.broken_image,
+                                    size: 48,
+                                    color: AppColors.ink,
+                                  ),
+                                ),
+                              ),
+                        );
+                      }(),
+                    ),
+                  ),
+                  // Favorite Button with Animation
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _bookService.toggleFavorite(widget.book.id);
+                        });
+                      },
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: AppColors.canvas.withValues(alpha: 0.95),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.1),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0.8, end: 1.0),
+                          duration: const Duration(milliseconds: 200),
+                          curve: Curves.elasticOut,
+                          builder: (context, scale, child) {
+                            return Transform.scale(
+                              scale: scale,
+                              child: Icon(
+                                isFavorite
+                                    ? Icons.favorite
+                                    : Icons.favorite_border,
+                                color: isFavorite
+                                    ? AppColors.accentMagenta
+                                    : AppColors.ink,
+                                size: 20,
                               ),
                             );
                           },
                         ),
+                      ),
+                    ),
                   ),
-                ),
-                // Favorite Button with Animation
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        _bookService.toggleFavorite(widget.book.id);
-                      });
-                    },
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: AppColors.canvas.withValues(alpha: 0.95),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
+                ],
+              ),
+
+              // Book Info
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Title
+                      Text(
+                        widget.book.title,
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.ink,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+
+                      // Author
+                      Text(
+                        widget.book.author,
+                        style: GoogleFonts.inter(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
+                          color: AppColors.ink.withValues(alpha: 0.6),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+
+                      const Spacer(),
+
+                      // Rating
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.star,
+                            size: 14,
+                            color: Color(0xFFFFB800),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            widget.book.rating.toStringAsFixed(1),
+                            style: GoogleFonts.inter(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.ink,
+                            ),
                           ),
                         ],
                       ),
-                      child: TweenAnimationBuilder<double>(
-                        tween: Tween(begin: 0.8, end: 1.0),
-                        duration: const Duration(milliseconds: 200),
-                        curve: Curves.elasticOut,
-                        builder: (context, scale, child) {
-                          return Transform.scale(
-                            scale: scale,
-                            child: Icon(
-                              isFavorite ? Icons.favorite : Icons.favorite_border,
-                              color: isFavorite ? AppColors.accentMagenta : AppColors.ink,
-                              size: 20,
-                            ),
-                          );
-                        },
-                      ),
-                    ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-
-            // Book Info
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Title
-                    Text(
-                      widget.book.title,
-                      style: GoogleFonts.inter(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.ink,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    
-                    // Author
-                    Text(
-                      widget.book.author,
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w400,
-                        color: AppColors.ink.withValues(alpha: 0.6),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    
-                    const Spacer(),
-                    
-                    // Rating
-                    Row(
-                      children: [
-                        const Icon(
-                          Icons.star,
-                          size: 14,
-                          color: Color(0xFFFFB800),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          widget.book.rating.toStringAsFixed(1),
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.ink,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
         ),
       ),
     );

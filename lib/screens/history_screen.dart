@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../models/book.dart';
 import '../utils/app_colors.dart';
 import '../services/book_service.dart';
 import '../widgets/book_card.dart';
@@ -14,11 +15,28 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryScreenState extends State<HistoryScreen> {
   final BookService _bookService = BookService();
+  List<Book> _historyBooks = []; // 🌟 Thêm biến lưu danh sách lịch sử
+  bool _isLoading = true; // 🌟 Thêm biến trạng thái loading
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory(); // 🌟 Gọi tải dữ liệu khi khởi chạy màn hình
+  }
+
+  Future<void> _loadHistory() async {
+    setState(() => _isLoading = true);
+    final books = await _bookService.fetchReadingHistory();
+    if (mounted) {
+      setState(() {
+        _historyBooks = books;
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final readBooks = _bookService.readBooks;
-
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.canvas,
@@ -50,7 +68,11 @@ class _HistoryScreenState extends State<HistoryScreen> {
           ),
         ),
       ),
-      body: readBooks.isEmpty
+      body: _isLoading
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            )
+          : _historyBooks.isEmpty
           ? Center(
               child: TweenAnimationBuilder<double>(
                 tween: Tween(begin: 0.0, end: 1.0),
@@ -80,7 +102,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             child: Icon(
                               Icons.history,
                               size: 80,
-                              color: AppColors.semanticSuccess.withValues(alpha: 0.6),
+                              color: AppColors.semanticSuccess.withValues(
+                                alpha: 0.6,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 24),
@@ -116,17 +140,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 crossAxisSpacing: 16,
                 mainAxisSpacing: 16,
               ),
-              itemCount: readBooks.length,
+              itemCount: _historyBooks.length,
               itemBuilder: (context, index) {
-                final book = readBooks[index];
+                final book = _historyBooks[index];
                 return BookCard(
                   book: book,
                   onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => BookDetailScreen(book: book),
-                      ),
-                    ).then((_) => setState(() {}));
+                    Navigator.of(context)
+                        .push(
+                          MaterialPageRoute(
+                            builder: (_) => BookDetailScreen(book: book),
+                          ),
+                        )
+                        .then((_) => _loadHistory());
+                    // 🌟 Tự cập nhật lại danh sách sắp xếp khi user nhấn đọc tiếp từ màn hình chi tiết trở ra
                   },
                 );
               },

@@ -3,10 +3,16 @@ import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
 import 'utils/app_theme.dart';
 import 'services/settings_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SettingsService().loadSettings();
+  await Supabase.initialize(
+    url: 'https://tllgztcfzbvhbistlulc.supabase.co',
+    anonKey: 'sb_publishable_1fCH3wVHcFq_udrsMj8TVw_wh0_U4Qi',
+  );
+
   runApp(const BookReadingApp());
 }
 

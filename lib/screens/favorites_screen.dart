@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../models/book.dart';
 import '../utils/app_colors.dart';
 import '../services/book_service.dart';
 import '../widgets/book_card.dart';
@@ -14,11 +15,28 @@ class FavoritesScreen extends StatefulWidget {
 
 class _FavoritesScreenState extends State<FavoritesScreen> {
   final BookService _bookService = BookService();
+  List<Book> _favoriteBooks = []; // 🌟 Thêm biến lưu danh sách sách yêu thích
+  bool _isLoading = true; // 🌟 Thêm biến trạng thái loading
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFavorites(); // 🌟 Gọi tải dữ liệu khi mở màn hình
+  }
+
+  Future<void> _loadFavorites() async {
+    setState(() => _isLoading = true);
+    final books = await _bookService.fetchFavoriteBooks();
+    if (mounted) {
+      setState(() {
+        _favoriteBooks = books;
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final favoriteBooks = _bookService.favoriteBooks;
-
     return Scaffold(
       appBar: AppBar(
         backgroundColor: AppColors.canvas,
@@ -50,7 +68,9 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           ),
         ),
       ),
-      body: favoriteBooks.isEmpty
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          : _favoriteBooks.isEmpty
           ? Center(
               child: TweenAnimationBuilder<double>(
                 tween: Tween(begin: 0.0, end: 1.0),
@@ -80,7 +100,9 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                             child: Icon(
                               Icons.favorite_border,
                               size: 80,
-                              color: AppColors.accentMagenta.withValues(alpha: 0.6),
+                              color: AppColors.accentMagenta.withValues(
+                                alpha: 0.6,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 24),
@@ -116,17 +138,18 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                 crossAxisSpacing: 16,
                 mainAxisSpacing: 16,
               ),
-              itemCount: favoriteBooks.length,
+              itemCount: _favoriteBooks.length,
               itemBuilder: (context, index) {
-                final book = favoriteBooks[index];
+                final book = _favoriteBooks[index];
                 return BookCard(
                   book: book,
                   onTap: () {
                     Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => BookDetailScreen(book: book),
-                      ),
-                    ).then((_) => setState(() {}));
+                          MaterialPageRoute(
+                            builder: (_) => BookDetailScreen(book: book),
+                          ),
+                        ).then((_) => _loadFavorites()); 
+                        // 🌟 Khi từ màn hình chi tiết quay lại, tự động refresh tải lại danh sách (phòng trường hợp user bấm bỏ thích bên trong)
                   },
                 );
               },

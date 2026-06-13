@@ -303,7 +303,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Admin: username = admin, password = 456',
+                          'Admin: username = admin, password = admin123',
                           style: GoogleFonts.jetBrainsMono(
                             fontSize: 12,
                             color: AppColors.ink.withValues(alpha: 0.8),

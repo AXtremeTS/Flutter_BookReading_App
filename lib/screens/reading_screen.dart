@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/book.dart';
+import '../services/book_service.dart';
 import '../utils/app_colors.dart';
 
 class ReadingScreen extends StatefulWidget {
   final Book book;
+  final List<Chapter> chapters;
   final int initialChapter;
 
   const ReadingScreen({
     super.key,
     required this.book,
+    required this.chapters,
     this.initialChapter = 0,
   });
 
@@ -22,12 +25,15 @@ class _ReadingScreenState extends State<ReadingScreen> {
   late int _currentChapter;
   double _fontSize = 18.0;
   bool _showControls = true;
+  final BookService _bookService = BookService();
 
   @override
   void initState() {
     super.initState();
     _currentChapter = widget.initialChapter;
     _pageController = PageController(initialPage: _currentChapter);
+    // TÌNH HUỐNG 1: Lưu lịch sử ngay khi vừa mở màn hình đọc chương này lên
+    _saveCurrentReadingHistory();
   }
 
   @override
@@ -40,6 +46,17 @@ class _ReadingScreenState extends State<ReadingScreen> {
     setState(() {
       _showControls = !_showControls;
     });
+  }
+
+  /// Hàm phụ trách đóng gói dữ liệu gửi lên BookService
+  void _saveCurrentReadingHistory() {
+    if (widget.chapters.isNotEmpty) {
+      final chapterId = widget.chapters[_currentChapter].id;
+      _bookService.updateReadingHistory(
+        bookId: widget.book.id,
+        volumeId: chapterId,
+      );
+    }
   }
 
   @override
@@ -68,7 +85,7 @@ class _ReadingScreenState extends State<ReadingScreen> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
-                    'Chapter ${_currentChapter + 1} of ${widget.book.chapters.length}',
+                    'Chapter ${_currentChapter + 1} of ${widget.chapters.length}',
                     style: GoogleFonts.inter(
                       fontSize: 12,
                       fontWeight: FontWeight.w400,
@@ -93,14 +110,17 @@ class _ReadingScreenState extends State<ReadingScreen> {
         onTap: _toggleControls,
         child: PageView.builder(
           controller: _pageController,
+          // TÌNH HUỐNG 2: Người dùng lướt đổi chương bằng tay
           onPageChanged: (index) {
             setState(() {
               _currentChapter = index;
             });
+            // Tự động gọi lưu lịch sử cho chương mới lướt qua
+            _saveCurrentReadingHistory();
           },
-          itemCount: widget.book.chapters.length,
+          itemCount: widget.chapters.length,
           itemBuilder: (context, index) {
-            final chapter = widget.book.chapters[index];
+            final chapter = widget.chapters[index];
             return SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
               child: Column(
@@ -134,7 +154,7 @@ class _ReadingScreenState extends State<ReadingScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  
+
                   // Chapter Title
                   Text(
                     chapter.title,
@@ -147,10 +167,10 @@ class _ReadingScreenState extends State<ReadingScreen> {
                     ),
                   ),
                   const SizedBox(height: 32),
-                  
+
                   // Chapter Content
                   Text(
-                    chapter.content,
+                    chapter.content ?? '',
                     style: GoogleFonts.inter(
                       fontSize: _fontSize,
                       fontWeight: FontWeight.w400,
@@ -160,7 +180,7 @@ class _ReadingScreenState extends State<ReadingScreen> {
                     ),
                   ),
                   const SizedBox(height: 48),
-                  
+
                   // Navigation Buttons
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -195,8 +215,8 @@ class _ReadingScreenState extends State<ReadingScreen> {
                         )
                       else
                         const SizedBox(),
-                      
-                      if (index < widget.book.chapters.length - 1)
+
+                      if (index < widget.chapters.length - 1)
                         Container(
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(50),
@@ -355,17 +375,19 @@ class _ReadingScreenState extends State<ReadingScreen> {
               ),
               Expanded(
                 child: ListView.builder(
-                  itemCount: widget.book.chapters.length,
+                  itemCount: widget.chapters.length,
                   itemBuilder: (context, index) {
-                    final chapter = widget.book.chapters[index];
+                    final chapter = widget.chapters[index];
                     final isCurrent = index == _currentChapter;
-                    
+
                     return ListTile(
                       leading: Container(
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(
-                          color: isCurrent ? AppColors.blockLime : AppColors.surfaceSoft,
+                          color: isCurrent
+                              ? AppColors.blockLime
+                              : AppColors.surfaceSoft,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Center(
@@ -383,13 +405,21 @@ class _ReadingScreenState extends State<ReadingScreen> {
                         chapter.title,
                         style: GoogleFonts.inter(
                           fontSize: 16,
-                          fontWeight: isCurrent ? FontWeight.w600 : FontWeight.w400,
+                          fontWeight: isCurrent
+                              ? FontWeight.w600
+                              : FontWeight.w400,
                           color: AppColors.ink,
                         ),
                       ),
                       trailing: isCurrent
-                          ? const Icon(Icons.check_circle, color: AppColors.semanticSuccess)
-                          : const Icon(Icons.chevron_right, color: AppColors.ink),
+                          ? const Icon(
+                              Icons.check_circle,
+                              color: AppColors.semanticSuccess,
+                            )
+                          : const Icon(
+                              Icons.chevron_right,
+                              color: AppColors.ink,
+                            ),
                       onTap: () {
                         Navigator.pop(context);
                         _pageController.animateToPage(
@@ -397,6 +427,11 @@ class _ReadingScreenState extends State<ReadingScreen> {
                           duration: const Duration(milliseconds: 300),
                           curve: Curves.easeInOut,
                         );
+                        // TÌNH HUỐNG 3: Lưu lịch sử ngay khi click chọn chương nhảy nhanh từ mục lục
+                        setState(() {
+                          _currentChapter = index;
+                        });
+                        _saveCurrentReadingHistory();
                       },
                     );
                   },

@@ -1,116 +1,167 @@
 import '../models/review.dart';
+import 'auth_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ReviewService {
   static final ReviewService _instance = ReviewService._internal();
   factory ReviewService() => _instance;
   ReviewService._internal();
 
-  // Mock reviews data - later can be replaced with database
-  final Map<String, List<Review>> _bookReviews = {
-    '1': [
-      Review(
-        id: 'r1',
-        userId: 'user1',
-        userName: 'Sarah Johnson',
-        userAvatar: 'SJ',
-        rating: 5.0,
-        comment: 'An absolute masterpiece! The way this book explores human nature is simply brilliant. I couldn\'t put it down.',
-        createdAt: DateTime.now().subtract(const Duration(days: 5)),
-        likes: 24,
-      ),
-      Review(
-        id: 'r2',
-        userId: 'user2',
-        userName: 'Michael Chen',
-        userAvatar: 'MC',
-        rating: 4.5,
-        comment: 'Great read with complex characters. The plot kept me engaged throughout. Highly recommend!',
-        createdAt: DateTime.now().subtract(const Duration(days: 12)),
-        likes: 15,
-      ),
-      Review(
-        id: 'r3',
-        userId: 'user3',
-        userName: 'Emma Davis',
-        userAvatar: 'ED',
-        rating: 5.0,
-        comment: 'One of the best books I\'ve read this year. Beautiful prose and thought-provoking themes.',
-        createdAt: DateTime.now().subtract(const Duration(days: 20)),
-        likes: 31,
-      ),
-    ],
-    '2': [
-      Review(
-        id: 'r4',
-        userId: 'user4',
-        userName: 'Alex Thompson',
-        userAvatar: 'AT',
-        rating: 4.0,
-        comment: 'Fascinating journey into AI and consciousness. Makes you think about the future.',
-        createdAt: DateTime.now().subtract(const Duration(days: 3)),
-        likes: 18,
-      ),
-      Review(
-        id: 'r5',
-        userId: 'user5',
-        userName: 'Lisa Martinez',
-        userAvatar: 'LM',
-        rating: 5.0,
-        comment: 'Mind-blowing! The author\'s vision of AI is both exciting and terrifying.',
-        createdAt: DateTime.now().subtract(const Duration(days: 8)),
-        likes: 27,
-      ),
-    ],
-  };
-
+  final _supabase = Supabase.instance.client;
+  final _authService = AuthService();
   final Set<String> _likedReviews = {};
+  // In-memory cache for book reviews (keyed by bookId)
+  final Map<int, List<Review>> _bookReviews = {};
 
-  List<Review> getBookReviews(String bookId, {bool isAdmin = false}) {
-    final reviews = _bookReviews[bookId] ?? [];
-    if (isAdmin) {
-      return reviews;
-    }
-    return reviews.where((r) => !r.isHidden).toList();
-  }
+  /// Lấy danh sách bình luận của một cuốn sách (Join với bảng Users)
+  Future<List<Review>> getBookReviews(int bookId, {bool isAdmin = false}) async {
+    try {
+      // 1. Tạo query cơ bản với các filter ban đầu
+      var query = _supabase
+          .from('comments')
+          .select('*, users(fullname, username, avatarurl)')
+          .eq('bookid', bookId);
 
-  void toggleReviewVisibility(String bookId, String reviewId) {
-    final reviews = _bookReviews[bookId];
-    if (reviews != null) {
-      final index = reviews.indexWhere((r) => r.id == reviewId);
-      if (index != -1) {
-        reviews[index].isHidden = !reviews[index].isHidden;
+      // 2. Thêm filter có điều kiện
+      if (!isAdmin) {
+        query = query.eq('ishidden', false);
       }
+
+      // 3. Áp dụng order (modifier) ở bước cuối cùng và await kết quả
+      final response = await query.order('createdat', ascending: false);
+
+      return (response as List<dynamic>)
+          .map((json) => Review.fromJson(json))
+          .toList();
+    } catch (e) {
+      print('Get Reviews Error: $e');
+      return [];
     }
   }
 
-  bool isReviewLiked(String reviewId) {
+  /// Lấy danh sách ID các bình luận mà người dùng hiện tại đã Like
+  Future<Set<int>> getLikedReviewIds(int bookId) async {
+    final user = _authService.currentUser;
+    if (user == null) return {};
+
+    try {
+      // Chỉ lấy commentid từ CommentLikes do User hiện tại thực hiện
+      final response = await _supabase
+          .from('commentlikes')
+          .select('commentid')
+          .eq('userid', user.userId);
+          
+      return (response as List<dynamic>)
+          .map((e) => e['commentid'] as int)
+          .toSet();
+    } catch (e) {
+      return {};
+    }
+  }
+
+  /// Toggle Trạng thái Like cho 1 Bình luận
+  Future<bool> toggleReviewLike(int commentId) async {
+    final user = _authService.currentUser;
+    if (user == null) return false;
+
+    try {
+      // Kiểm tra xem User đã like bình luận này chưa
+      final existing = await _supabase
+          .from('commentlikes')
+          .select()
+          .eq('commentid', commentId)
+          .eq('userid', user.userId)
+          .maybeSingle();
+
+      if (existing != null) {
+        // Nếu đã like -> Xóa like
+        await _supabase
+            .from('commentlikes')
+            .delete()
+            .eq('commentid', commentId)
+            .eq('userid', user.userId);
+        return false; // Trả về trạng thái "chưa like"
+      } else {
+        // Nếu chưa like -> Thêm like mới
+        await _supabase.from('commentlikes').insert({
+          'commentid': commentId,
+          'userid': user.userId,
+        });
+        return true; // Trả về trạng thái "đã like"
+      }
+    } catch (e) {
+      print('Toggle Like Error: $e');
+      return false;
+    }
+  }
+
+  /// Thêm bình luận mới và chấm điểm (Cập nhật cả bảng Comments và Ratings)
+  Future<bool> addReview(int bookId, double rating, String commentContent) async {
+    final user = _authService.currentUser;
+    if (user == null) return false;
+
+    try {
+      // 1. Lưu nội dung bình luận
+      await _supabase.from('comments').insert({
+        'bookid': bookId,
+        'userid': user.userId,
+        'content': commentContent,
+        'score': rating > 0 ? rating.toInt() : null, // Chỉ gán điểm nếu có chấm sao
+      });
+
+      // 2. Lưu vào bảng Ratings nếu người dùng có chọn số sao
+      // Upsert để ghi đè điểm nếu user đã từng rate cuốn này rồi
+      if (rating > 0) {
+        await _supabase.from('ratings').upsert({
+          'userid': user.userId,
+          'bookid': bookId,
+          'score': rating.toInt(),
+          'updatedat': DateTime.now().toIso8601String(),
+        }, onConflict: 'userid,bookid');
+      }
+
+      return true;
+    } catch (e) {
+      print('Add Review Error: $e');
+      return false;
+    }
+  }
+
+  Future<void> toggleReviewVisibility(int bookId, int reviewId) async {
+    try {
+      // 1. Lấy trạng thái ẩn hiện hiện tại
+      final res = await _supabase
+          .from('reviews') // hoặc tên bảng comment của bạn
+          .select('ishidden')
+          .eq('reviewid', reviewId)
+          .single();
+
+      bool currentHidden = res['ishidden'] ?? false;
+
+      // 2. Cập nhật đảo ngược trạng thái (True -> False, False -> True)
+      await _supabase
+          .from('reviews')
+          .update({'ishidden': !currentHidden})
+          .eq('reviewid', reviewId);
+    } catch (e) {
+      print("Lỗi ẩn bình luận: $e");
+    }
+  }
+
+  bool isReviewLiked(int reviewId) {
     return _likedReviews.contains(reviewId);
   }
 
-  void toggleReviewLike(String reviewId) {
-    if (_likedReviews.contains(reviewId)) {
-      _likedReviews.remove(reviewId);
-    } else {
-      _likedReviews.add(reviewId);
-    }
-  }
-
-  void addReview(String bookId, Review review) {
-    if (_bookReviews[bookId] == null) {
-      _bookReviews[bookId] = [];
-    }
-    _bookReviews[bookId]!.insert(0, review);
-  }
-
-  double getAverageRating(String bookId) {
-    final reviews = getBookReviews(bookId);
+  Future<double> getAverageRating(int bookId) async {
+    final reviews = await getBookReviews(bookId);
     if (reviews.isEmpty) return 0.0;
-    
+
     final sum = reviews.fold<double>(0, (prev, review) => prev + review.rating);
     return sum / reviews.length;
   }
 
-  int getReviewCount(String bookId) {
-    return getBookReviews(bookId).length;
+  Future<int> getReviewCount(int bookId) async {
+    final reviews = await getBookReviews(bookId);
+    return reviews.length;
   }
 }

@@ -41,7 +41,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       _passwordController.text,
     );
 
-    if (success) {
+    if (await success) {
       // Auto login after registration
       AuthService().login(
         _usernameController.text.trim(),

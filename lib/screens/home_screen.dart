@@ -34,10 +34,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadData() async {
-    await _bookService.loadSavedData();
+  // Thay thế việc load local cũ bằng gọi API Supabase
+    final books = await _bookService.fetchAllBooks();
     if (mounted) {
       setState(() {
-        _displayedBooks = _bookService.allBooks;
+        _displayedBooks = books;
         _isLoading = false;
       });
     }
@@ -483,8 +484,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                                 crossAxisCount: 2,
                                 childAspectRatio: 0.65,
-                                crossAxisSpacing: 16,
-                                mainAxisSpacing: 16,
+                                crossAxisSpacing: 14,
+                                mainAxisSpacing: 14,
                               ),
                               itemCount: _displayedBooks.length,
                               itemBuilder: (context, index) {

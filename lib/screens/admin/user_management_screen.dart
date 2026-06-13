@@ -17,57 +17,109 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
   List<User> _filteredUsers = [];
   final TextEditingController _searchController = TextEditingController();
 
+  bool _isLoading = true; // Thêm trạng thái loading cho mạng
+
   @override
   void initState() {
     super.initState();
     _loadUsers();
   }
 
-  void _loadUsers() {
-    setState(() {
-      _allUsers = _authService.getAllUsers();
-      _filteredUsers = _allUsers;
-    });
+  // Tách riêng hàm tải dữ liệu thành hàm async độc lập
+  Future<void> _loadUsers() async {
+    setState(() => _isLoading = true);
+
+    try {
+      // Đợi lấy dữ liệu từ Supabase xong
+      final users = await _authService.getAllUsers();
+
+      // Kiểm tra mounted trước khi gọi setState trong môi trường async
+      if (mounted) {
+        setState(() {
+          _allUsers = users;
+          _filteredUsers = users;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   void _filterUsers(String query) {
     setState(() {
       _filteredUsers = _allUsers
-          .where((user) =>
-              user.username.toLowerCase().contains(query.toLowerCase()))
+          .where(
+            (user) => user.username.toLowerCase().contains(query.toLowerCase()),
+          )
           .toList();
     });
   }
 
   void _showResetPasswordDialog(User user) {
     final controller = TextEditingController();
+    bool isResetting = false; // Trạng thái loading nội bộ của dialog
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Reset mật khẩu cho ${user.username}'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(labelText: 'Mật khẩu mới'),
-          obscureText: true,
+      barrierDismissible: false, // Không cho bấm ra ngoài khi đang xử lý
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Reset mật khẩu cho ${user.username}'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(labelText: 'Mật khẩu mới'),
+            obscureText: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Hủy'),
+            ),
+            ElevatedButton(
+              onPressed: isResetting
+                  ? null
+                  : () async {
+                      if (controller.text.trim().isNotEmpty) {
+                        setDialogState(() => isResetting = true);
+
+                        // Thực hiện đổi mật khẩu trên Supabase
+                        final success = await _authService.resetPassword(
+                          user.userId,
+                          controller.text.trim(),
+                        );
+
+                        if (context.mounted) {
+                          Navigator.pop(context);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                success
+                                    ? 'Đã cập nhật mật khẩu thành công'
+                                    : 'Lỗi cập nhật mật khẩu',
+                              ),
+                              backgroundColor: success
+                                  ? Colors.green
+                                  : Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+              child: isResetting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Lưu'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Hủy'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (controller.text.isNotEmpty) {
-                _authService.resetPassword(user.username, controller.text);
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Đã cập nhật mật khẩu')),
-                );
-              }
-            },
-            child: const Text('Lưu'),
-          ),
-        ],
       ),
     );
   }
@@ -97,7 +149,9 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
               final user = _filteredUsers[index];
               return ListTile(
                 leading: CircleAvatar(
-                  backgroundColor: user.isAdmin ? AppColors.primary : Colors.grey,
+                  backgroundColor: user.isAdmin
+                      ? AppColors.primary
+                      : Colors.grey,
                   child: const Icon(Icons.person, color: Colors.white),
                 ),
                 title: Text(
@@ -115,11 +169,21 @@ class _UserManagementScreenState extends State<UserManagementScreen> {
                     ),
                     if (!user.isAdmin)
                       Switch(
-                        value: !user.isDeactivated,
-                        onChanged: (value) {
+                        value: !user
+                            .isDeactivated, // Nếu isDeactivated là false (hoạt động) thì switch bật
+                        onChanged: (value) async {
+                          // Optimistic UI: Đảo trạng thái hiển thị ngay lập tức cho mượt
                           setState(() {
-                            _authService.toggleUserStatus(user.username);
+                            // Mẹo nhỏ: Bạn cần định nghĩa lại hàm copyWith hoặc thay đổi tạm trạng thái
+                            // Ở đây mình gọi lại API lấy list để đảm bảo dữ liệu chuẩn nhất từ DB
+                            _isLoading = true;
                           });
+
+                          // Thực hiện lệnh gọi DB
+                          await _authService.toggleUserStatus(user.userId);
+
+                          // Tải lại danh sách sau khi thay đổi xong
+                          await _loadUsers();
                         },
                         activeColor: AppColors.primary,
                       ),

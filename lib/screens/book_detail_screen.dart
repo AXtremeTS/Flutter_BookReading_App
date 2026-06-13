@@ -5,7 +5,6 @@ import '../models/review.dart';
 import '../utils/app_colors.dart';
 import '../services/book_service.dart';
 import '../services/review_service.dart';
-import '../services/auth_service.dart';
 import 'reading_screen.dart';
 import 'package:intl/intl.dart';
 
@@ -21,14 +20,104 @@ class BookDetailScreen extends StatefulWidget {
 class _BookDetailScreenState extends State<BookDetailScreen> {
   final BookService _bookService = BookService();
   final ReviewService _reviewService = ReviewService();
-  final AuthService _authService = AuthService();
   final TextEditingController _commentController = TextEditingController();
+
   double _userRating = 0;
+  bool _isLoading = true;
+  bool _isFavorite = false;
+
+  List<Review> _reviews = [];
+  Set<int> _likedReviewIds = {};
+  List<Chapter> _chapters = [];
 
   @override
   void dispose() {
     _commentController.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialData();
+  }
+
+  /// Tải thông tin từ Supabase khi vừa mở màn hình
+  Future<void> _loadInitialData() async {
+    setState(() => _isLoading = true);
+
+    // Chạy song song nhiều API để tải dữ liệu nhanh hơn
+    final results = await Future.wait([
+      _bookService.isFavorite(widget.book.id),
+      _reviewService.getBookReviews(widget.book.id),
+      _reviewService.getLikedReviewIds(widget.book.id),
+      _bookService
+          .fetchBookDetails(widget.book.id)
+          .then((book) => book?.chapters),
+      _bookService.isFavorite(widget.book.id)
+    ]);
+
+    if (mounted) {
+      setState(() {
+        _isFavorite = results[0] as bool;
+        _reviews = results[1] as List<Review>;
+        _likedReviewIds = results[2] as Set<int>;
+        _chapters = results[3] as List<Chapter>;
+        _isFavorite = results[4] as bool;
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _handleFavoriteToggle() async {
+    // Lưu lại trạng thái cũ phòng trường hợp lỗi mạng thì hoàn tác (revert)
+    final originalStatus = _isFavorite;
+    
+    // Cập nhật giao diện lập tức để tạo cảm giác mượt mà (Optimistic UI)
+    setState(() {
+      _isFavorite = !_isFavorite;
+    });
+
+    // Gọi lên Server cập nhật dữ liệu thực tế
+    final success = await _bookService.toggleFavorite(widget.book.id);
+    
+    if (!success) {
+      // Nếu lỗi mạng/server, hoàn tác lại trạng thái cũ và thông báo
+      setState(() {
+        _isFavorite = originalStatus;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Không thể cập nhật trạng thái yêu thích. Vui lòng thử lại!')),
+      );
+    }
+  }
+
+  void _submitReview() async {
+    if (_commentController.text.trim().isEmpty) return;
+
+    final success = await _reviewService.addReview(
+      widget.book.id,
+      _userRating,
+      _commentController.text.trim(),
+    );
+
+    if (success && mounted) {
+      _commentController.clear();
+      Navigator.pop(context);
+      // Tải lại danh sách bình luận
+      _loadInitialData();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Bình luận đã được gửi thành công!',
+            style: GoogleFonts.inter(fontSize: 16),
+          ),
+          backgroundColor: AppColors.semanticSuccess,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   void _showAddReviewDialog() {
@@ -59,7 +148,6 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Handle
                       Center(
                         child: Container(
                           width: 40,
@@ -71,19 +159,16 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                           ),
                         ),
                       ),
-                      
                       Text(
-                        'Write a Review',
+                        'Viết bình luận',
                         style: GoogleFonts.inter(
                           fontSize: 24,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                       const SizedBox(height: 24),
-                      
-                      // Rating Stars
                       Text(
-                        'Your Rating',
+                        'Đánh giá của bạn',
                         style: GoogleFonts.inter(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -101,7 +186,9 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                             child: Padding(
                               padding: const EdgeInsets.only(right: 8),
                               child: Icon(
-                                index < _userRating ? Icons.star : Icons.star_border,
+                                index < _userRating
+                                    ? Icons.star
+                                    : Icons.star_border,
                                 color: const Color(0xFFFFB800),
                                 size: 40,
                               ),
@@ -110,10 +197,8 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                         }),
                       ),
                       const SizedBox(height: 24),
-                      
-                      // Comment Field
                       Text(
-                        'Your Review',
+                        'Nội dung',
                         style: GoogleFonts.inter(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -125,7 +210,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                         maxLines: 5,
                         style: GoogleFonts.inter(fontSize: 16),
                         decoration: InputDecoration(
-                          hintText: 'Share your thoughts about this book...',
+                          hintText: 'Chia sẻ cảm nhận về cuốn sách...',
                           hintStyle: GoogleFonts.inter(
                             color: AppColors.ink.withValues(alpha: 0.4),
                           ),
@@ -135,65 +220,23 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                         ),
                       ),
                       const SizedBox(height: 24),
-                      
-                      // Submit Button
-                      Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(50),
-                          boxShadow: [
-                            BoxShadow(
-                              color: AppColors.primary.withValues(alpha: 0.3),
-                              blurRadius: 12,
-                              offset: const Offset(0, 6),
-                            ),
-                          ],
-                        ),
-                        child: ElevatedButton(
-                          onPressed: () {
-                            if (_userRating > 0 && _commentController.text.trim().isNotEmpty) {
-                              final user = _authService.currentUser;
-                              final review = Review(
-                                id: 'r${DateTime.now().millisecondsSinceEpoch}',
-                                userId: user?.username ?? 'user',
-                                userName: user?.username ?? 'Anonymous',
-                                userAvatar: (user?.username ?? 'AN').substring(0, 2).toUpperCase(),
-                                rating: _userRating,
-                                comment: _commentController.text.trim(),
-                                createdAt: DateTime.now(),
-                                likes: 0,
-                              );
-                              
-                              _reviewService.addReview(widget.book.id, review);
-                              Navigator.pop(context);
-                              setState(() {});
-                              
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Review posted successfully!',
-                                    style: GoogleFonts.inter(fontSize: 16),
-                                  ),
-                                  backgroundColor: AppColors.semanticSuccess,
-                                  behavior: SnackBarBehavior.floating,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                ),
-                              );
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            minimumSize: const Size(double.infinity, 56),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(50),
-                            ),
+                      ElevatedButton(
+                        onPressed:
+                            (_userRating > 0 &&
+                                _commentController.text.trim().isNotEmpty)
+                            ? _submitReview
+                            : null,
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 56),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(50),
                           ),
-                          child: Text(
-                            'Submit Review',
-                            style: GoogleFonts.inter(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                            ),
+                        ),
+                        child: Text(
+                          'Gửi Bình Luận',
+                          style: GoogleFonts.inter(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
                       ),
@@ -210,13 +253,18 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isFavorite = _bookService.isFavorite(widget.book.id);
-    final isRead = _bookService.isRead(widget.book.id);
+    if (_isLoading) {
+      return Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: AppColors.primary),
+        ),
+      );
+    }
 
     return Scaffold(
       body: CustomScrollView(
         slivers: [
-          // App Bar with Image
+          // App Bar with Cover Image
           SliverAppBar(
             expandedHeight: 400,
             pinned: true,
@@ -227,15 +275,12 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                 decoration: BoxDecoration(
                   color: AppColors.canvas.withValues(alpha: 0.95),
                   shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
                 ),
-                child: const Icon(Icons.arrow_back, color: AppColors.ink, size: 20),
+                child: const Icon(
+                  Icons.arrow_back,
+                  color: AppColors.ink,
+                  size: 20,
+                ),
               ),
               onPressed: () => Navigator.pop(context),
             ),
@@ -249,44 +294,65 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: isFavorite 
+                        color: _isFavorite
                             ? AppColors.accentMagenta.withValues(alpha: 0.3)
                             : Colors.black.withValues(alpha: 0.2),
-                        blurRadius: isFavorite ? 12 : 8,
+                        blurRadius: _isFavorite ? 12 : 8,
                         offset: const Offset(0, 2),
                       ),
                     ],
                   ),
                   child: Icon(
-                    isFavorite ? Icons.favorite : Icons.favorite_border,
-                    color: isFavorite ? AppColors.accentMagenta : AppColors.ink,
+                    _isFavorite ? Icons.favorite : Icons.favorite_border,
+                    color: _isFavorite
+                        ? AppColors.accentMagenta
+                        : AppColors.ink,
                     size: 20,
                   ),
                 ),
-                onPressed: () {
-                  setState(() {
-                    _bookService.toggleFavorite(widget.book.id);
-                  });
-                },
+                onPressed: _handleFavoriteToggle,
               ),
             ],
-            flexibleSpace: FlexibleSpaceBar(
-              background: Image.asset(
-                widget.book.coverImage,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
+            flexibleSpace: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: () {
+                final cover = widget.book.coverImage;
+                if (cover == null || cover.isEmpty) {
                   return Container(
                     color: AppColors.blockLilac,
                     child: const Center(
-                      child: Icon(Icons.book, size: 100, color: AppColors.ink),
+                      child: Icon(Icons.book, size: 80, color: AppColors.ink),
                     ),
                   );
-                },
-              ),
+                }
+                // 1. Nếu là ảnh asset local
+                if (cover.startsWith('assets/')) {
+                  return Image.asset(cover, fit: BoxFit.cover);
+                }
+                // 2. Nếu là ảnh URL từ Supabase mạng
+                if (cover.startsWith('http')) {
+                  return Image.network(
+                    cover,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      color: AppColors.blockLilac,
+                      child: const Center(
+                        child: Icon(
+                          Icons.broken_image,
+                          size: 80,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                    ),
+                  );
+                }
+                // // 3. Nếu là ảnh File do admin up từ máy
+                // return Image.file(File(cover), fit: BoxFit.cover);
+              }(),
             ),
           ),
 
-          // Book Details
+          // Main Content
           SliverToBoxAdapter(
             child: Container(
               color: AppColors.canvas,
@@ -298,7 +364,6 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Title
                         Text(
                           widget.book.title,
                           style: GoogleFonts.inter(
@@ -310,188 +375,89 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        
-                        // Author
                         Text(
                           'by ${widget.book.author}',
                           style: GoogleFonts.inter(
                             fontSize: 18,
-                            fontWeight: FontWeight.w400,
                             color: AppColors.ink.withValues(alpha: 0.6),
                           ),
                         ),
                         const SizedBox(height: 16),
-                        
-                        // Rating
-                        Row(
-                          children: [
-                            ...List.generate(5, (index) {
-                              return Icon(
-                                index < widget.book.rating.floor()
-                                    ? Icons.star
-                                    : (index < widget.book.rating
-                                        ? Icons.star_half
-                                        : Icons.star_border),
-                                color: const Color(0xFFFFB800),
-                                size: 24,
+
+                        // Start Reading Button
+                        ElevatedButton(
+                          onPressed: () {
+                            // Cập nhật lịch sử đọc chương đầu tiên trên Database
+                            if (widget.book.chapters.isNotEmpty) {
+                              _bookService.updateReadingHistory(
+                                bookId: widget.book.id,
+                                volumeId: widget.book.chapters[0].id,
                               );
-                            }),
-                            const SizedBox(width: 8),
-                            Text(
-                              widget.book.rating.toStringAsFixed(1),
-                              style: GoogleFonts.inter(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.ink,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-                        
-                        // Tags with subtle shadow
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: widget.book.tags.map((tag) {
-                            return Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: AppColors.blockLime,
-                                borderRadius: BorderRadius.circular(50),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.05),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: Text(
-                                tag,
-                                style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppColors.ink,
+                            }
+
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => ReadingScreen(
+                                  book: widget.book,
+                                  chapters: _chapters,
+                                  initialChapter: 0,
                                 ),
                               ),
                             );
-                          }).toList(),
-                        ),
-                        const SizedBox(height: 24),
-                        
-                        // Description
-                        Text(
-                          'Description',
-                          style: GoogleFonts.inter(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.ink,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          widget.book.description,
-                          style: GoogleFonts.inter(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w400,
-                            height: 1.6,
-                            color: AppColors.ink,
-                          ),
-                        ),
-                        const SizedBox(height: 32),
-                        
-                        // Start Reading Button with Shadow
-                        Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(50),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.primary.withValues(alpha: 0.3),
-                                blurRadius: 16,
-                                offset: const Offset(0, 8),
-                              ),
-                            ],
-                          ),
-                          child: ElevatedButton(
-                            onPressed: () {
-                              _bookService.markAsRead(widget.book.id);
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => ReadingScreen(book: widget.book),
-                                ),
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
-                              minimumSize: const Size(double.infinity, 56),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(50),
-                              ),
+                          },
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 56),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(50),
                             ),
-                            child: Text(
-                              isRead ? 'Continue Reading' : 'Start Reading',
-                              style: GoogleFonts.inter(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w600,
-                              ),
+                          ),
+                          child: Text(
+                            'Bắt đầu đọc',
+                            style: GoogleFonts.inter(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
                         ),
                         const SizedBox(height: 32),
-                        
-                        // Chapters List
+
                         Text(
-                          'Chapters',
+                          'Danh sách chương',
                           style: GoogleFonts.inter(
                             fontSize: 20,
                             fontWeight: FontWeight.w700,
-                            color: AppColors.ink,
                           ),
                         ),
                         const SizedBox(height: 16),
                       ],
                     ),
                   ),
-                  
-                  // Chapter Items with hover effect
-                  ...widget.book.chapters.asMap().entries.map((entry) {
+
+                  // Chapters List
+                  ..._chapters.asMap().entries.map((entry) {
+                    final index = entry.key;
                     final chapter = entry.value;
-                    return TweenAnimationBuilder<double>(
-                      tween: Tween(begin: 0.0, end: 1.0),
-                      duration: Duration(milliseconds: 300 + (entry.key * 50)),
-                      curve: Curves.easeOut,
-                      builder: (context, value, child) {
-                        return Opacity(
-                          opacity: value,
-                          child: Transform.translate(
-                            offset: Offset(20 * (1 - value), 0),
-                            child: InkWell(
-                              onTap: () {
-                                _bookService.markAsRead(widget.book.id);
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => ReadingScreen(
-                                      book: widget.book,
-                                      initialChapter: chapter.chapterNumber - 1,
-                                    ),
-                                  ),
-                                );
-                              },
-                              child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
+                    return InkWell(
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ReadingScreen(
+                              book: widget
+                                  .book, // Truyền kèm cả danh sách chương đã load vào màn hình đọc
+                              chapters: _chapters,
+                              initialChapter: index,
+                            ),
+                          ),
+                        );
+                      },
+                      child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 24,
                           vertical: 16,
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.canvas,
                           border: Border(
-                            bottom: BorderSide(
-                              color: AppColors.hairlineSoft,
-                            ),
+                            bottom: BorderSide(color: AppColors.hairlineSoft),
                           ),
                         ),
                         child: Row(
@@ -507,9 +473,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                                 child: Text(
                                   '${chapter.chapterNumber}',
                                   style: GoogleFonts.inter(
-                                    fontSize: 16,
                                     fontWeight: FontWeight.w700,
-                                    color: AppColors.ink,
                                   ),
                                 ),
                               ),
@@ -518,11 +482,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                             Expanded(
                               child: Text(
                                 chapter.title,
-                                style: GoogleFonts.inter(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppColors.ink,
-                                ),
+                                style: GoogleFonts.inter(fontSize: 16),
                               ),
                             ),
                             const Icon(
@@ -531,14 +491,10 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                             ),
                           ],
                         ),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
+                      ),
                     );
                   }),
-                  
+
                   // Reviews Section
                   Container(
                     color: AppColors.surfaceSoft,
@@ -549,95 +505,56 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Reviews & Ratings',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppColors.ink,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '${_reviewService.getReviewCount(widget.book.id)} reviews',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w400,
-                                    color: AppColors.ink.withValues(alpha: 0.6),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(50),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppColors.blockLime.withValues(alpha: 0.4),
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
+                            Text(
+                              'Đánh giá & Bình luận',
+                              style: GoogleFonts.inter(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
                               ),
-                              child: ElevatedButton.icon(
-                                onPressed: _showAddReviewDialog,
-                                icon: const Icon(Icons.rate_review),
-                                label: Text(
-                                  'Write Review',
-                                  style: GoogleFonts.inter(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                            ),
+                            ElevatedButton.icon(
+                              onPressed: _showAddReviewDialog,
+                              icon: const Icon(Icons.rate_review),
+                              label: const Text('Viết Đánh Giá'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.blockLime,
+                                foregroundColor: AppColors.ink,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(50),
                                 ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.blockLime,
-                                  foregroundColor: AppColors.ink,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(50),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 12,
-                                  ),
+                                textStyle: GoogleFonts.inter(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
                                 ),
                               ),
                             ),
                           ],
                         ),
                         const SizedBox(height: 24),
-                        
+
                         // Reviews List
-                        ..._reviewService.getBookReviews(widget.book.id).asMap().entries.map((entry) {
-                          final review = entry.value;
-                          return TweenAnimationBuilder<double>(
-                            tween: Tween(begin: 0.0, end: 1.0),
-                            duration: Duration(milliseconds: 400 + (entry.key * 100)),
-                            curve: Curves.easeOut,
-                            builder: (context, value, child) {
-                              return Opacity(
-                                opacity: value,
-                                child: Transform.translate(
-                                  offset: Offset(0, 20 * (1 - value)),
-                                  child: _ReviewCard(
-                                    review: review,
-                                    onLike: () {
-                                      setState(() {
-                                        _reviewService.toggleReviewLike(review.id);
-                                      });
-                                    },
-                                  ),
-                                ),
-                              );
+                        ..._reviews.map((review) {
+                          final isLiked = _likedReviewIds.contains(review.id);
+                          return _ReviewCard(
+                            review: review,
+                            isLiked: isLiked,
+                            onLike: () async {
+                              // Đổi UI lập tức để mượt mà
+                              setState(() {
+                                if (isLiked) {
+                                  _likedReviewIds.remove(review.id);
+                                } else {
+                                  _likedReviewIds.add(review.id);
+                                }
+                              });
+                              // Gọi API chạy ngầm
+                              await _reviewService.toggleReviewLike(review.id);
                             },
                           );
                         }),
                       ],
                     ),
                   ),
-                  
                   const SizedBox(height: 32),
                 ],
               ),
@@ -651,16 +568,17 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
 class _ReviewCard extends StatelessWidget {
   final Review review;
+  final bool isLiked;
   final VoidCallback onLike;
 
   const _ReviewCard({
     required this.review,
+    required this.isLiked,
     required this.onLike,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isLiked = ReviewService().isReviewLiked(review.id);
     final timeAgo = _formatTimeAgo(review.createdAt);
 
     return Container(
@@ -670,45 +588,27 @@ class _ReviewCard extends StatelessWidget {
         color: AppColors.canvas,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.hairline),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              // User Avatar
               Container(
                 width: 48,
                 height: 48,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
                     colors: [AppColors.blockLilac, AppColors.blockPink],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
                   ),
                   shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.blockLilac.withValues(alpha: 0.3),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
                 ),
                 child: Center(
                   child: Text(
-                    review.userAvatar,
+                    review.userName.substring(0, 1).toUpperCase(),
                     style: GoogleFonts.inter(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.ink,
                     ),
                   ),
                 ),
@@ -723,20 +623,15 @@ class _ReviewCard extends StatelessWidget {
                       style: GoogleFonts.inter(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.ink,
                       ),
                     ),
-                    const SizedBox(height: 2),
                     Row(
                       children: [
-                        // Star Rating
                         ...List.generate(5, (index) {
                           return Icon(
                             index < review.rating.floor()
                                 ? Icons.star
-                                : (index < review.rating
-                                    ? Icons.star_half
-                                    : Icons.star_border),
+                                : Icons.star_border,
                             color: const Color(0xFFFFB800),
                             size: 16,
                           );
@@ -746,7 +641,6 @@ class _ReviewCard extends StatelessWidget {
                           timeAgo,
                           style: GoogleFonts.inter(
                             fontSize: 12,
-                            fontWeight: FontWeight.w400,
                             color: AppColors.ink.withValues(alpha: 0.5),
                           ),
                         ),
@@ -758,64 +652,47 @@ class _ReviewCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          
-          // Comment
           Text(
             review.comment,
-            style: GoogleFonts.inter(
-              fontSize: 15,
-              fontWeight: FontWeight.w400,
-              height: 1.6,
-              color: AppColors.ink,
-            ),
+            style: GoogleFonts.inter(fontSize: 15, height: 1.6),
           ),
           const SizedBox(height: 16),
-          
-          // Like Button
-          Row(
-            children: [
-              InkWell(
-                onTap: onLike,
+
+          InkWell(
+            onTap: onLike,
+            borderRadius: BorderRadius.circular(50),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: isLiked ? AppColors.blockPink : AppColors.surfaceSoft,
                 borderRadius: BorderRadius.circular(50),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isLiked 
-                        ? AppColors.blockPink 
-                        : AppColors.surfaceSoft,
-                    borderRadius: BorderRadius.circular(50),
-                    border: Border.all(
-                      color: isLiked 
-                          ? AppColors.accentMagenta.withValues(alpha: 0.3)
-                          : AppColors.hairline,
-                    ),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        isLiked ? Icons.thumb_up : Icons.thumb_up_outlined,
-                        size: 16,
-                        color: isLiked ? AppColors.accentMagenta : AppColors.ink,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        '${review.likes + (isLiked ? 1 : 0)}',
-                        style: GoogleFonts.inter(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: isLiked ? AppColors.accentMagenta : AppColors.ink,
-                        ),
-                      ),
-                    ],
-                  ),
+                border: Border.all(
+                  color: isLiked
+                      ? AppColors.accentMagenta.withValues(alpha: 0.3)
+                      : AppColors.hairline,
                 ),
               ),
-            ],
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isLiked ? Icons.thumb_up : Icons.thumb_up_outlined,
+                    size: 16,
+                    color: isLiked ? AppColors.accentMagenta : AppColors.ink,
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    // Cộng đệm thêm 1 (logic local) nếu User vừa nhấn Like
+                    '${review.likes + (isLiked ? 1 : 0)}',
+                    style: GoogleFonts.inter(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: isLiked ? AppColors.accentMagenta : AppColors.ink,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -823,19 +700,12 @@ class _ReviewCard extends StatelessWidget {
   }
 
   String _formatTimeAgo(DateTime dateTime) {
-    final now = DateTime.now();
-    final difference = now.difference(dateTime);
-
-    if (difference.inDays > 30) {
+    final difference = DateTime.now().difference(dateTime);
+    if (difference.inDays > 30)
       return DateFormat('MMM d, yyyy').format(dateTime);
-    } else if (difference.inDays > 0) {
-      return '${difference.inDays}d ago';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}m ago';
-    } else {
-      return 'Just now';
-    }
+    if (difference.inDays > 0) return '${difference.inDays} ngày trước';
+    if (difference.inHours > 0) return '${difference.inHours} giờ trước';
+    if (difference.inMinutes > 0) return '${difference.inMinutes} phút trước';
+    return 'Vừa xong';
   }
 }

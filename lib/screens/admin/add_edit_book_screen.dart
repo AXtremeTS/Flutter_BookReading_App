@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+// import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import '../../models/book.dart';
@@ -36,7 +36,9 @@ class _AddEditBookScreenState extends State<AddEditBookScreen> {
     _descriptionController = TextEditingController(text: widget.book?.description ?? '');
     _tagsController = TextEditingController(text: widget.book?.tags.join(', ') ?? '');
     _selectedImagePath = widget.book?.coverImage;
-    _isFromFile = widget.book?.isFromFile ?? false;
+
+    _isFromFile = widget.book?.coverImage != null && !widget.book!.coverImage!.startsWith('http');
+
     _isHidden = widget.book?.isHidden ?? false;
   }
 
@@ -62,7 +64,7 @@ class _AddEditBookScreenState extends State<AddEditBookScreen> {
       final tags = _tagsController.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
       
       final book = Book(
-        id: widget.book?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        id: widget.book?.id ?? DateTime.now().millisecondsSinceEpoch,
         title: _titleController.text,
         author: _authorController.text,
         description: _descriptionController.text,
@@ -71,7 +73,6 @@ class _AddEditBookScreenState extends State<AddEditBookScreen> {
         tags: tags,
         chapters: widget.book?.chapters ?? [],
         isHidden: _isHidden,
-        isFromFile: _isFromFile,
       );
 
       if (widget.book == null) {
